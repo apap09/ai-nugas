@@ -24,7 +24,7 @@ const GROQ_MODELS = ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-
 // Ganti nama model di bawah ini untuk mengubah model yang otomatis terpilih saat web dibuka.
 // Isi dengan nama persis salah satu model di GROQ_MODELS / GEMINI_MODELS.
 // Kalau model-nya tidak tersedia (mis. API key-nya kosong), otomatis pakai model pertama di daftar.
-const DEFAULT_MODEL = 'openai/gpt-oss-120b';
+const DEFAULT_MODEL = 'gemini-3.1-flash-lite';
 
 const BATCH_SIZE = 10;
 
