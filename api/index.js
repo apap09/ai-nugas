@@ -20,6 +20,12 @@ const GEMINI_MODELS = [
 ];
 const GROQ_MODELS = ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b'];
 
+// ====== MODEL DEFAULT ======
+// Ganti nama model di bawah ini untuk mengubah model yang otomatis terpilih saat web dibuka.
+// Isi dengan nama persis salah satu model di GROQ_MODELS / GEMINI_MODELS.
+// Kalau model-nya tidak tersedia (mis. API key-nya kosong), otomatis pakai model pertama di daftar.
+const DEFAULT_MODEL = 'openai/gpt-oss-120b';
+
 const BATCH_SIZE = 10;
 
 function buildPrompt(materi, jumlahSoal) {
@@ -173,9 +179,16 @@ function getAvailableProviders() {
   return list;
 }
 
+// Model default: DEFAULT_MODEL kalau tersedia, kalau tidak pakai model pertama.
+function resolveDefaultProvider(list) {
+  return list.find(p => p.id === DEFAULT_MODEL) || list[0] || null;
+}
+
 app.get('/api/providers', (req, res) => {
-  const providers = getAvailableProviders().map(p => ({ id: p.id, label: p.label, provider: p.provider }));
-  res.json({ providers });
+  const available = getAvailableProviders();
+  const providers = available.map(p => ({ id: p.id, label: p.label, provider: p.provider }));
+  const def = resolveDefaultProvider(available);
+  res.json({ providers, default: def ? def.id : null });
 });
 
 async function callAIWithProvider(prompt, modelId) {
@@ -184,8 +197,8 @@ async function callAIWithProvider(prompt, modelId) {
 
   let provider = providers.find(p => p.id === modelId);
   if (!provider) {
-    console.warn('[Model] "' + modelId + '" tidak ditemukan, pakai default: ' + providers[0].id);
-    provider = providers[0];
+    provider = resolveDefaultProvider(providers);
+    console.warn('[Model] "' + modelId + '" tidak ditemukan, pakai default: ' + provider.id);
   }
 
   const result = await provider.fn(prompt);
@@ -293,8 +306,8 @@ app.post('/api/generate', upload.single('file'), async (req, res) => {
   try {
     const text = req.body.text;
     const jumlahSoalDiminta = parseInt(req.body.jumlahSoal) || 10;
-    // Default: Groq (kalau frontend tidak kirim provider)
-    const modelId = req.body.provider || 'openai/gpt-oss-120b';
+    // Default: DEFAULT_MODEL (kalau frontend tidak kirim provider)
+    const modelId = req.body.provider || DEFAULT_MODEL;
 
     if (!text || text.trim().length < 30) return res.status(400).json({ error: 'Materi terlalu pendek.' });
     if (getAvailableProviders().length === 0) return res.status(500).json({ error: 'Tidak ada API key.' });

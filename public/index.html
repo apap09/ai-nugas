@@ -141,30 +141,37 @@
       </div>
     </div>
 
-    <div class="sidebar-section">
-      <div class="section-title"><i data-lucide="user"></i> CREATOR</div>
-      <a class="creator-card" id="creatorCard"
-         href="https://www.instagram.com/apap09_"
-         target="_blank"
-         rel="noopener noreferrer">
-        <div class="creator-avatar">
-          <i data-lucide="instagram"></i>
-        </div>
-        <div class="creator-info">
-          <div class="creator-name">@apap09_</div>
-          <div class="creator-sub">Open Instagram</div>
-        </div>
-        <i data-lucide="external-link" class="creator-arrow"></i>
-      </a>
-    </div>
+    <div class="sidebar-header" id="inputHeader">UPLOAD FILE</div>
 
-    <div class="sidebar-header">UPLOAD FILE</div>
+    <!-- Toggle mode input: kiri = teks, kanan = upload (default) -->
+    <div class="input-toggle" role="group" aria-label="Pilih cara input materi">
+      <button type="button" class="toggle-btn" id="modeText" aria-pressed="false">
+        <i data-lucide="type"></i> <span>Teks</span>
+      </button>
+      <button type="button" class="toggle-btn active" id="modeUpload" aria-pressed="true">
+        <i data-lucide="upload"></i> <span>Upload</span>
+      </button>
+    </div>
     <div class="upload-zone" id="uploadZone">
       <i data-lucide="upload-cloud" class="upload-icon"></i>
       <div class="upload-text">Drop file di sini</div>
       <div class="upload-sub">atau klik untuk pilih</div>
       <div class="upload-sub" style="font-size:10px; color:#666;">PDF • DOCX • TXT</div>
       <input type="file" id="fileInput" accept=".pdf,.docx,.txt" hidden />
+    </div>
+
+    <div class="text-zone" id="textZone" hidden>
+      <textarea
+        id="materiInput"
+        class="text-input"
+        placeholder="Tempel atau ketik materi / soal di sini..."
+        maxlength="25000"
+        spellcheck="false"
+        aria-label="Materi atau soal"></textarea>
+      <div class="text-meta">
+        <span class="text-hint" id="textHint">Minimal 30 karakter</span>
+        <span class="text-counter" id="textCounter">0 / 25.000</span>
+      </div>
     </div>
 
     <div class="sidebar-header">PENGATURAN</div>
@@ -184,6 +191,24 @@
     <button id="btnGenerate" class="btn-primary" disabled>
       <i data-lucide="play"></i> Generate Kuis
     </button>
+
+    <!-- CREATOR: sengaja di paling bawah, terpisah dari fitur utama -->
+    <div class="sidebar-section sidebar-creator">
+      <div class="section-title"><i data-lucide="user"></i> CREATOR</div>
+      <a class="creator-card" id="creatorCard"
+         href="https://www.instagram.com/apap09_"
+         target="_blank"
+         rel="noopener noreferrer">
+        <div class="creator-avatar">
+          <i data-lucide="instagram"></i>
+        </div>
+        <div class="creator-info">
+          <div class="creator-name">@apap09_</div>
+          <div class="creator-sub">Open Instagram</div>
+        </div>
+        <i data-lucide="external-link" class="creator-arrow"></i>
+      </a>
+    </div>
 
     <div class="sidebar-footer">
       Created by <span class="footer-accent">al</span>

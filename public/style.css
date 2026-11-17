@@ -266,6 +266,17 @@ i[data-lucide], svg.lucide {
   transform: translate(1px, -1px);
 }
 
+/* CREATOR di paling bawah sidebar, terpisah dari fitur utama */
+.sidebar-creator { margin-top: auto; padding-top: 8px; }
+.sidebar-creator::before {
+  content: '';
+  display: block;
+  height: 1px;
+  margin: 0 8px 4px;
+  background: var(--border);
+}
+.sidebar-creator + .sidebar-footer { margin-top: 0; }
+
 /* SIDEBAR FOOTER */
 .sidebar-footer {
   margin-top: auto;
@@ -332,6 +343,72 @@ i[data-lucide], svg.lucide {
 }
 .upload-text { color: var(--text-main); font-weight: 500; }
 .upload-sub { color: var(--text-dim); font-size: 10px; margin-top: 2px; }
+
+/* ============================================
+   TOGGLE MODE INPUT (Teks / Upload)
+   ============================================ */
+.input-toggle {
+  display: flex;
+  gap: 2px;
+  margin: 6px 12px 4px;
+  padding: 2px;
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.toggle-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: 0.15s;
+}
+.toggle-btn svg { width: 14px; height: 14px; }
+.toggle-btn:hover:not(.active) { background: var(--hover); color: var(--text-main); }
+.toggle-btn.active { background: var(--accent); color: #fff; }
+.toggle-btn:focus-visible { outline: 1px solid var(--text-main); outline-offset: 1px; }
+
+/* INPUT TEKS */
+.text-zone { margin: 8px 12px; }
+.text-input {
+  display: block;
+  width: 100%;
+  min-height: 150px;
+  max-height: 320px;
+  resize: vertical;
+  padding: 8px;
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-main);
+  font-family: 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.text-input::placeholder { color: var(--text-dim); }
+.text-input:focus { border-color: var(--accent); }
+.text-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.text-hint.ready { color: var(--green); }
+.text-counter.full { color: var(--red); }
 
 /* SETTINGS */
 .setting-item { padding: 6px 14px; }
@@ -775,6 +852,9 @@ i[data-lucide], svg.lucide {
   .sidebar.open { transform: translateX(0); }
 
   .file-remove { opacity: 1; }
+
+  /* 16px supaya iOS tidak auto-zoom saat mengetik */
+  .text-input { font-size: 16px; }
 
   .panel {
     max-height: 180px;

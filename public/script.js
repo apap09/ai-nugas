@@ -56,8 +56,9 @@ async function loadProviders() {
       aiProvider.appendChild(opt);
     });
 
-    // Default: pilih model pertama
-    aiProvider.value = data.providers[0].id;
+    // Default: DEFAULT_MODEL dari backend (api/index.js); kalau tidak ada, pakai model pertama
+    const defaultId = data.providers.some(p => p.id === data.default) ? data.default : data.providers[0].id;
+    aiProvider.value = defaultId;
 
     log('Model tersedia: ' + data.providers.map(p => p.label).join(', '), 'ok');
   } catch (err) {
@@ -264,8 +265,8 @@ function resetFileState(silent = false) {
 
   fileItem.hidden = true;
   fileName.textContent = '-';
-  materiText.textContent = 'Belum ada file/materi yang di-upload.';
-  btnGenerate.disabled = true;
+  renderMateriPreview();
+  refreshGenerateState();
   fileInput.value = '';
   statusSkor.textContent = 'Score: -';
 
@@ -316,6 +317,104 @@ function switchTab(tab) {
     $('breadcrumb').textContent = 'nugas-ai › materi.txt';
   }
 }
+
+// ==================================================
+// ====== MODE INPUT (Upload / Teks) ======
+// ==================================================
+const MIN_TEXT_LENGTH = 30;    // sama dengan batas minimal di backend
+const MAX_TEXT_LENGTH = 25000; // sama dengan batas potong di backend
+
+const modeUpload = $('modeUpload');
+const modeText = $('modeText');
+const textZone = $('textZone');
+const materiInput = $('materiInput');
+const textCounter = $('textCounter');
+const textHint = $('textHint');
+const inputHeader = $('inputHeader');
+
+let inputMode = 'upload'; // 'upload' (default) | 'text'
+let isGenerating = false;
+let textWasReady = false;
+
+// Materi yang dipakai saat generate, sesuai mode yang aktif
+function getActiveMateri() {
+  return inputMode === 'text' ? materiInput.value : state.materiText;
+}
+
+function isMateriReady() {
+  if (inputMode === 'text') return materiInput.value.trim().length >= MIN_TEXT_LENGTH;
+  return !!state.materiText;
+}
+
+function refreshGenerateState() {
+  btnGenerate.disabled = isGenerating || !isMateriReady();
+}
+
+// Tab materi.txt ikut menampilkan materi dari mode yang aktif
+function renderMateriPreview() {
+  const text = getActiveMateri();
+  if (text && text.trim()) {
+    materiText.textContent = text;
+  } else {
+    materiText.textContent = inputMode === 'text'
+      ? 'Belum ada materi yang diketik.'
+      : 'Belum ada file/materi yang di-upload.';
+  }
+}
+
+function updateTextMeta() {
+  const len = materiInput.value.length;
+  const ready = materiInput.value.trim().length >= MIN_TEXT_LENGTH;
+  textCounter.textContent = len.toLocaleString('id-ID') + ' / ' + MAX_TEXT_LENGTH.toLocaleString('id-ID');
+  textCounter.classList.toggle('full', len >= MAX_TEXT_LENGTH);
+  textHint.textContent = ready ? 'Siap digenerate' : 'Minimal ' + MIN_TEXT_LENGTH + ' karakter';
+  textHint.classList.toggle('ready', ready);
+}
+
+function handleTextInput() {
+  updateTextMeta();
+  renderMateriPreview();
+  refreshGenerateState();
+
+  const ready = materiInput.value.trim().length >= MIN_TEXT_LENGTH;
+  if (ready && !textWasReady) {
+    log('Teks materi siap. Klik "Generate Kuis" untuk memulai.', 'ok');
+    setStatus('Teks siap', 'green');
+  } else if (!ready && textWasReady) {
+    setStatus('Siap', 'green');
+  }
+  textWasReady = ready;
+}
+
+function setInputMode(mode) {
+  if (mode === inputMode) return;
+  playClickSfx();
+  inputMode = mode;
+  const isText = mode === 'text';
+
+  modeText.classList.toggle('active', isText);
+  modeUpload.classList.toggle('active', !isText);
+  modeText.setAttribute('aria-pressed', String(isText));
+  modeUpload.setAttribute('aria-pressed', String(!isText));
+
+  uploadZone.hidden = isText;
+  textZone.hidden = !isText;
+  inputHeader.textContent = isText ? 'INPUT TEKS' : 'UPLOAD FILE';
+  fileItem.hidden = isText || !state.fileName;
+
+  textWasReady = materiInput.value.trim().length >= MIN_TEXT_LENGTH;
+  updateTextMeta();
+  renderMateriPreview();
+  refreshGenerateState();
+
+  log('Mode input: ' + (isText ? 'teks' : 'upload file') + '.', 'dim');
+  if (isText) materiInput.focus();
+  refreshIcons();
+}
+
+modeText.onclick = () => setInputMode('text');
+modeUpload.onclick = () => setInputMode('upload');
+materiInput.oninput = handleTextInput;
 
 // ====== UPLOAD ======
 uploadZone.onclick = () => fileInput.click();
@@ -394,6 +493,7 @@ btnGenerate.onclick = async () => {
   const jumlahSoal = parseInt($('jumlahSoal').value) || 10;
   const modelId = aiProvider.value || 'gemini-3.8-flash';
 
+  isGenerating = true;
   btnGenerate.disabled = true;
   btnGenerate.innerHTML = '<span class="spinner"></span> Memproses...';
   setStatus('AI menganalisis...', 'yellow');
@@ -403,7 +503,7 @@ btnGenerate.onclick = async () => {
     const res = await fetch('/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: state.materiText, jumlahSoal, provider: modelId })
+      body: JSON.stringify({ text: getActiveMateri(), jumlahSoal, provider: modelId })
     });
 
     const rawText = await res.text();
@@ -441,7 +541,8 @@ btnGenerate.onclick = async () => {
     </div>`;
     refreshIcons();
   } finally {
-    btnGenerate.disabled = false;
+    isGenerating = false;
+    refreshGenerateState();
     btnGenerate.innerHTML = '<i data-lucide="play"></i> Generate Kuis';
     refreshIcons();
   }
