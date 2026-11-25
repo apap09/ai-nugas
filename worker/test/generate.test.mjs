@@ -97,4 +97,75 @@ await run('parseAIResponse memperbaiki JSON berpagar kode dan JSON terpotong', a
   assert.equal(parseAIResponse(terpotong).soal.length, 2);
 });
 
+// ====== RETRY + CADANGAN MODEL ======
+// Gemini palsu: gagal "high demand" sebanyak `gagalDulu` kali, lalu sukses. Groq palsu: selalu sukses.
+function mockCampur({ gagalGemini, groqOk = true }) {
+  let gagalSisa = gagalGemini;
+  globalThis.fetch = async (url, opts) => {
+    const isGemini = String(url).includes('generativelanguage');
+    const prompt = isGemini
+      ? JSON.parse(opts.body).contents[0].parts[0].text
+      : JSON.parse(opts.body).messages[1].content;
+    const n = Number(/TEPAT (\d+) SOAL/.exec(prompt)[1]);
+    calls.push({ host: isGemini ? 'gemini' : 'groq', n });
+    const body = JSON.stringify({ judul: 'T', soal: soal(n) });
+
+    if (isGemini) {
+      if (gagalSisa > 0) {
+        gagalSisa--;
+        return new Response(JSON.stringify({ error: { message: 'This model is currently experiencing high demand.' } }), { status: 503 });
+      }
+      return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: body }] } }] }), { status: 200 });
+    }
+    if (!groqOk) return new Response(JSON.stringify({ error: { message: 'over capacity' } }), { status: 503 });
+    return new Response(JSON.stringify({ choices: [{ message: { content: body } }] }), { status: 200 });
+  };
+}
+
+const ENV_DUA = { GROQ_API_KEY: 'k', GEMINI_API_KEY: 'k' };
+
+await run('503 high demand di Gemini dicoba ulang lalu berhasil (tanpa pindah model)', async () => {
+  mockCampur({ gagalGemini: 2 });
+  const infos = [];
+  const r = await generateWithBatching({
+    materi: 'x'.repeat(100), jumlahSoal: 10, modelId: 'gemini-3.1-flash-lite', env: ENV_DUA,
+    retryDelaysMs: [1, 1], onProgress: p => { if (p.info) infos.push(p.info); }
+  });
+  assert.equal(r.provider, 'gemini-3.1-flash-lite');
+  assert.equal(calls.filter(c => c.host === 'gemini').length, 3);
+  assert.equal(calls.filter(c => c.host === 'groq').length, 0);
+  assert.equal(infos.length, 2);
+  assert.equal(r.data.soal.length, 10);
+});
+
+await run('Gemini terus sibuk -> batch dipindah ke Groq dan hasil tetap lengkap 50 soal', async () => {
+  mockCampur({ gagalGemini: 999 });
+  const r = await generateWithBatching({
+    materi: 'x'.repeat(100), jumlahSoal: 50, modelId: 'gemini-3.1-flash-lite', env: ENV_DUA, retryDelaysMs: [1, 1]
+  });
+  assert.equal(r.data.soal.length, 50);
+  assert.equal(r.providerName, 'Groq');
+  assert.equal(calls.filter(c => c.host === 'groq').length, 5);
+});
+
+await run('semua model sibuk -> error jelas, bukan menggantung', async () => {
+  mockCampur({ gagalGemini: 999, groqOk: false });
+  await assert.rejects(
+    generateWithBatching({ materi: 'x'.repeat(100), jumlahSoal: 10, modelId: 'gemini-3.1-flash-lite', env: ENV_DUA, retryDelaysMs: [1] }),
+    /Semua model sedang sibuk/
+  );
+});
+
+await run('pembatalan saat menunggu retry berhenti cepat', async () => {
+  mockCampur({ gagalGemini: 999 });
+  const ac = new AbortController();
+  setTimeout(() => ac.abort(), 30);
+  const t0 = Date.now();
+  await assert.rejects(
+    generateWithBatching({ materi: 'x'.repeat(100), jumlahSoal: 10, modelId: 'gemini-3.1-flash-lite', env: ENV_DUA, retryDelaysMs: [5000], signal: ac.signal }),
+    /Dibatalkan/
+  );
+  assert.ok(Date.now() - t0 < 1000);
+});
+
 console.log(process.exitCode ? '\nAda tes yang gagal.' : '\nSemua tes lolos.');
