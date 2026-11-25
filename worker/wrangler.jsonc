@@ -17,6 +17,6 @@
   "vars": {
     // Daftar asal halaman yang boleh membuka WebSocket, dipisah koma, tanpa garis miring di akhir.
     // Ganti domain Vercel kamu kalau berbeda, dan hapus localhost kalau tidak dipakai.
-    "ALLOWED_ORIGINS": "https://ai-nugas.vercel.app,http://localhost:3000"
+    "ALLOWED_ORIGINS": "https://nugasai.vercel.app,http://localhost:3000"
   }
 }
