@@ -172,6 +172,60 @@ export function parseAIResponse(raw) {
   }
 }
 
+// ====== RETRY + CADANGAN MODEL ======
+// Gemini sering membalas 503 "high demand" sesaat, begitu juga 429 (batas kuota).
+// Kalau satu batch gagal, dulu seluruh generate ikut gagal. Sekarang:
+//  1. gangguan sementara dicoba ulang di model yang sama (jeda 2 dtk, lalu 5 dtk)
+//  2. kalau tetap gagal, batch itu dikerjakan model lain yang tersedia
+const RETRY_DELAYS_MS = [2000, 5000];
+
+export function isTransient(err) {
+  const msg = String((err && err.message) || err);
+  return /high demand|overload|over capacity|unavailable|temporar|rate limit|quota|too many|timeout|timed out|abort|non-JSON|kosong|HTTP (429|5\d\d)/i.test(msg);
+}
+
+function sleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal && signal.aborted) return reject(new Error('Dibatalkan.'));
+    const onAbort = () => { clearTimeout(timer); reject(new Error('Dibatalkan.')); };
+    const timer = setTimeout(() => {
+      if (signal) signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    if (signal) signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+async function panggilDenganCadangan({ prompt, utama, semua, signal, notify, retryDelays }) {
+  const urutan = [utama, ...semua.filter(p => p.id !== utama.id)];
+  let errTerakhir = null;
+
+  for (let k = 0; k < urutan.length; k++) {
+    const prov = urutan[k];
+
+    for (let percobaan = 0; percobaan <= retryDelays.length; percobaan++) {
+      if (signal && signal.aborted) throw new Error('Dibatalkan.');
+      try {
+        const text = await prov.fn(prompt, signal);
+        return { text, provider: prov };
+      } catch (err) {
+        errTerakhir = err;
+        if (signal && signal.aborted) throw new Error('Dibatalkan.');
+        if (!isTransient(err) || percobaan >= retryDelays.length) break;
+        notify('Model ' + prov.id + ' sedang sibuk, mencoba lagi (' + (percobaan + 1) + '/' + retryDelays.length + ')...');
+        await sleep(retryDelays[percobaan], signal);
+      }
+    }
+
+    if (urutan[k + 1]) {
+      notify('Model ' + prov.id + ' belum bisa dipakai, pindah ke ' + urutan[k + 1].id + '...');
+    }
+  }
+
+  const detail = errTerakhir && errTerakhir.message ? ' (' + errTerakhir.message + ')' : '';
+  throw new Error('Semua model sedang sibuk atau gagal. Coba lagi beberapa menit lagi.' + detail);
+}
+
 function lengkapiPenjelasan(soal) {
   soal.forEach(s => {
     if (!s.penjelasan || String(s.penjelasan).trim() === '') {
@@ -182,12 +236,14 @@ function lengkapiPenjelasan(soal) {
 
 // Sama dengan generateWithBatching di api/index.js, ditambah onProgress dan signal.
 // onProgress({ batch, totalBatch, soalSelesai, totalSoal }) dipanggil sebelum dan sesudah tiap batch.
-export async function generateWithBatching({ materi, jumlahSoal, modelId, env, onProgress, signal }) {
+export async function generateWithBatching({ materi, jumlahSoal, modelId, env, onProgress, signal, retryDelaysMs }) {
   const providers = getAvailableProviders(env);
   if (providers.length === 0) throw new Error('Tidak ada API key.');
 
   // Model tidak dikenal -> pakai model pertama yang tersedia (default di sisi browser sudah ditentukan Vercel).
-  const provider = providers.find(p => p.id === modelId) || providers[0];
+  const utama = providers.find(p => p.id === modelId) || providers[0];
+  let dipakai = utama; // model yang berhasil di batch terakhir
+  const retryDelays = Array.isArray(retryDelaysMs) ? retryDelaysMs : RETRY_DELAYS_MS;
   const progress = typeof onProgress === 'function' ? onProgress : () => {};
 
   const batches = [];
@@ -208,8 +264,16 @@ export async function generateWithBatching({ materi, jumlahSoal, modelId, env, o
     const n = batches[i];
     progress({ batch: i + 1, totalBatch: batches.length, soalSelesai: semuaSoal.length, totalSoal: jumlahSoal });
 
-    const text = await provider.fn(buildPrompt(materi, n), signal);
-    const parsed = parseAIResponse(text);
+    const hasil = await panggilDenganCadangan({
+      prompt: buildPrompt(materi, n),
+      utama,
+      semua: providers,
+      signal,
+      retryDelays,
+      notify: (info) => progress({ batch: i + 1, totalBatch: batches.length, soalSelesai: semuaSoal.length, totalSoal: jumlahSoal, info })
+    });
+    dipakai = hasil.provider;
+    const parsed = parseAIResponse(hasil.text);
 
     if (parsed.soal && Array.isArray(parsed.soal)) {
       semuaSoal.push(...parsed.soal.slice(0, n));
@@ -226,7 +290,7 @@ export async function generateWithBatching({ materi, jumlahSoal, modelId, env, o
 
   return {
     data: { mode, jumlah_opsi: jumlahOpsi, judul, soal: semuaSoal },
-    provider: provider.id,
-    providerName: provider.provider
+    provider: dipakai.id,
+    providerName: dipakai.provider
   };
 }

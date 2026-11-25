@@ -547,6 +547,7 @@ function generateViaWebSocket(payload) {
       try { msg = JSON.parse(ev.data); } catch (e) { return; }
 
       if (msg.type === 'progress') {
+        if (msg.info) log(msg.info, 'warn');
         if (msg.totalBatch > 1) {
           log(`Batch ${msg.batch}/${msg.totalBatch} (${msg.soalSelesai}/${msg.totalSoal} soal)...`, 'dim');
         }
