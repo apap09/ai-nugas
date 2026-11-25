@@ -488,6 +488,81 @@ async function parseDOCX(file) {
   return result.value;
 }
 
+// ==================================================
+// ====== GENERATE VIA WEBSOCKET (Cloudflare Durable Object) ======
+// ==================================================
+// Isi dengan alamat Worker, contoh: 'wss://nugas-ai-ws.NAMA-AKUN.workers.dev/ws'
+// Kosongkan ('') untuk memakai /api/generate di Vercel seperti sebelumnya.
+const GENERATE_WS_URL = '';
+
+const WS_OPEN_TIMEOUT_MS = 15000;     // batas menunggu koneksi tersambung
+const WS_HEARTBEAT_MS = 25000;        // kirim "ping" supaya koneksi tidak dianggap diam
+const WS_MAX_WAIT_MS = 15 * 60 * 1000; // batas total menunggu hasil
+
+function generateViaWebSocket(payload) {
+  return new Promise((resolve, reject) => {
+    let ws;
+    let finished = false;
+    let heartbeat = null;
+    let openTimer = null;
+    let maxTimer = null;
+
+    function finish(fn, value) {
+      if (finished) return;
+      finished = true;
+      clearInterval(heartbeat);
+      clearTimeout(openTimer);
+      clearTimeout(maxTimer);
+      try { ws.close(); } catch (e) { /* sudah tertutup */ }
+      fn(value);
+    }
+
+    try {
+      ws = new WebSocket(GENERATE_WS_URL);
+    } catch (e) {
+      return reject(new Error('Alamat WebSocket tidak valid.'));
+    }
+
+    openTimer = setTimeout(
+      () => finish(reject, new Error('Tidak bisa tersambung ke server generate. Coba lagi.')),
+      WS_OPEN_TIMEOUT_MS
+    );
+    maxTimer = setTimeout(
+      () => finish(reject, new Error('Proses terlalu lama. Coba kurangi jumlah soal.')),
+      WS_MAX_WAIT_MS
+    );
+
+    ws.onopen = () => {
+      clearTimeout(openTimer);
+      log('Tersambung ke server generate.', 'dim');
+      ws.send(JSON.stringify({ type: 'generate', ...payload }));
+      heartbeat = setInterval(() => {
+        try { ws.send('ping'); } catch (e) { /* ditangani onclose */ }
+      }, WS_HEARTBEAT_MS);
+    };
+
+    ws.onmessage = (ev) => {
+      if (ev.data === 'pong') return;
+      let msg;
+      try { msg = JSON.parse(ev.data); } catch (e) { return; }
+
+      if (msg.type === 'progress') {
+        if (msg.totalBatch > 1) {
+          log(`Batch ${msg.batch}/${msg.totalBatch} (${msg.soalSelesai}/${msg.totalSoal} soal)...`, 'dim');
+        }
+        setStatus(`AI menganalisis... ${msg.soalSelesai}/${msg.totalSoal} soal`, 'yellow');
+      } else if (msg.type === 'done') {
+        finish(resolve, msg);
+      } else if (msg.type === 'error') {
+        finish(reject, new Error(msg.error || 'Gagal dari server.'));
+      }
+    };
+
+    ws.onerror = () => finish(reject, new Error('Koneksi ke server generate bermasalah.'));
+    ws.onclose = () => finish(reject, new Error('Koneksi terputus sebelum soal selesai dibuat. Coba lagi.'));
+  });
+}
+
 // ====== GENERATE ======
 btnGenerate.onclick = async () => {
   const jumlahSoal = parseInt($('jumlahSoal').value) || 10;
@@ -500,25 +575,32 @@ btnGenerate.onclick = async () => {
   log(`Diproses ke model ${modelId}...`, 'warn');
 
   try {
-    const res = await fetch('/api/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: getActiveMateri(), jumlahSoal, provider: modelId })
-    });
-
-    const rawText = await res.text();
-
     let json;
-    try {
-      json = JSON.parse(rawText);
-    } catch (parseErr) {
-      if (rawText.includes('An error') || rawText.includes('error occurred') || rawText.includes('FUNCTION_INVOCATION')) {
-        throw new Error('Server timeout / overload. Tunggu 30 detik lalu coba lagi.');
-      }
-      throw new Error('Server balas format tidak dikenal. Coba lagi sebentar.');
-    }
 
-    if (!res.ok) throw new Error(json.error || 'Gagal dari server.');
+    if (GENERATE_WS_URL) {
+      // Jalur WebSocket (Cloudflare Durable Object): tidak kena batas durasi Vercel
+      json = await generateViaWebSocket({ text: getActiveMateri(), jumlahSoal, provider: modelId });
+    } else {
+      // Jalur lama (Vercel /api/generate)
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: getActiveMateri(), jumlahSoal, provider: modelId })
+      });
+
+      const rawText = await res.text();
+
+      try {
+        json = JSON.parse(rawText);
+      } catch (parseErr) {
+        if (rawText.includes('An error') || rawText.includes('error occurred') || rawText.includes('FUNCTION_INVOCATION')) {
+          throw new Error('Server timeout / overload. Tunggu 30 detik lalu coba lagi.');
+        }
+        throw new Error('Server balas format tidak dikenal. Coba lagi sebentar.');
+      }
+
+      if (!res.ok) throw new Error(json.error || 'Gagal dari server.');
+    }
 
     state.kuisData = json.data;
     state.jumlahOpsi = json.data.jumlah_opsi || 5;

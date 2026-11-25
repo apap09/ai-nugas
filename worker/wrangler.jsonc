@@ -1,0 +1,22 @@
+{
+  "name": "nugas-ai-ws",
+  "main": "src/index.js",
+  "compatibility_date": "2025-11-01",
+
+  "durable_objects": {
+    "bindings": [
+      { "name": "GENERATOR", "class_name": "Generator" }
+    ]
+  },
+
+  // Paket Free hanya mendukung Durable Object berbasis SQLite, jadi pakai new_sqlite_classes.
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Generator"] }
+  ],
+
+  "vars": {
+    // Daftar asal halaman yang boleh membuka WebSocket, dipisah koma, tanpa garis miring di akhir.
+    // Ganti domain Vercel kamu kalau berbeda, dan hapus localhost kalau tidak dipakai.
+    "ALLOWED_ORIGINS": "https://ai-nugas.vercel.app,http://localhost:3000"
+  }
+}
