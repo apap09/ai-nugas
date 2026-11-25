@@ -175,9 +175,16 @@ export function parseAIResponse(raw) {
 // ====== RETRY + CADANGAN MODEL ======
 // Gemini sering membalas 503 "high demand" sesaat, begitu juga 429 (batas kuota).
 // Kalau satu batch gagal, dulu seluruh generate ikut gagal. Sekarang:
-//  1. gangguan sementara dicoba ulang di model yang sama (jeda 2 dtk, lalu 5 dtk)
-//  2. kalau tetap gagal, batch itu dikerjakan model lain yang tersedia
-const RETRY_DELAYS_MS = [2000, 5000];
+//  1. gangguan sementara ditunggu dulu dan dicoba ulang di model yang sama
+//     (jeda 3, 8, 15, 30, 45 detik = sekitar 100 detik kesabaran, sudah termasuk cukup untuk
+//     jendela kuota per menit). Tidak masalah lama karena Durable Object tidak dibatasi 60 detik.
+//  2. baru kalau semua percobaan habis, batch itu dikerjakan model lain yang tersedia
+const RETRY_DELAYS_MS = [3000, 8000, 15000, 30000, 45000];
+
+// Jeda diacak +-15% supaya beberapa permintaan tidak mencoba ulang di detik yang sama.
+function denganAcak(ms) {
+  return Math.max(1, Math.round(ms * (0.85 + Math.random() * 0.3)));
+}
 
 export function isTransient(err) {
   const msg = String((err && err.message) || err);
@@ -212,13 +219,14 @@ async function panggilDenganCadangan({ prompt, utama, semua, signal, notify, ret
         errTerakhir = err;
         if (signal && signal.aborted) throw new Error('Dibatalkan.');
         if (!isTransient(err) || percobaan >= retryDelays.length) break;
-        notify('Model ' + prov.id + ' sedang sibuk, mencoba lagi (' + (percobaan + 1) + '/' + retryDelays.length + ')...');
-        await sleep(retryDelays[percobaan], signal);
+        const tunggu = denganAcak(retryDelays[percobaan]);
+        notify('Model ' + prov.id + ' sedang sibuk, menunggu ' + Math.round(tunggu / 1000) + ' detik lalu coba lagi (' + (percobaan + 1) + '/' + retryDelays.length + ')...');
+        await sleep(tunggu, signal);
       }
     }
 
     if (urutan[k + 1]) {
-      notify('Model ' + prov.id + ' belum bisa dipakai, pindah ke ' + urutan[k + 1].id + '...');
+      notify('Model ' + prov.id + ' masih belum bisa dipakai setelah menunggu, pindah ke ' + urutan[k + 1].id + '...');
     }
   }
 
