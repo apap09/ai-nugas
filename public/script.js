@@ -493,7 +493,7 @@ async function parseDOCX(file) {
 // ==================================================
 // Isi dengan alamat Worker, contoh: 'wss://nugas-ai-ws.NAMA-AKUN.workers.dev/ws'
 // Kosongkan ('') untuk memakai /api/generate di Vercel seperti sebelumnya.
-const GENERATE_WS_URL = 'wss://https://nugas-ai-ws.realsky625.workers.dev/ws';
+const GENERATE_WS_URL = 'wss://nugas-ai-ws.realsky625.workers.dev/ws';
 
 const WS_OPEN_TIMEOUT_MS = 15000;     // batas menunggu koneksi tersambung
 const WS_HEARTBEAT_MS = 25000;        // kirim "ping" supaya koneksi tidak dianggap diam
